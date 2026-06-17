@@ -1,0 +1,4 @@
+numpy
+pandas
+scikit-learn
+umap-learn   # 可选:仅用于额外的 UMAP 展示坐标,不装也能跑(PCA 已足够)

@@ -1,0 +1,14 @@
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 派生输出(可由 build.py 重新生成)
+out/
+
+# 临时文件
+web/_check.js
+*.tmp
+*.log
+
+# 不纳入大体积原始棋谱库(请自行从东萍/CGLemon 下载到 data/raw/)
+data/raw/

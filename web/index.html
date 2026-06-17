@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>棋风地图 · 中国象棋大师风格空间</title>
+<script src="data.js"></script>
+<style>
+  :root{
+    --paper:#F3EEE2; --ink:#2b2b2b; --muted:#6b6b6b; --panel:#FBF8F0;
+    --border:#D8CFBb; --accent:#C0392B; --gold:#B8860B; --river:#7B6A4F;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,"Microsoft YaHei",sans-serif;background:var(--paper);color:var(--ink);overflow:hidden}
+  .app{display:flex;height:100vh}
+  .left{width:64%;position:relative;border-right:1px solid var(--border);
+    background:linear-gradient(#F6F1E6,#EFE7D5)}
+  #scatter{display:block;width:100%;height:100%;cursor:grab}
+  #scatter:active{cursor:grabbing}
+  .title{position:absolute;top:14px;left:20px;pointer-events:none}
+  .title h1{font-size:20px;letter-spacing:2px;color:#3a2f25}
+  .title .sub{font-size:12px;color:var(--muted);margin-top:3px;letter-spacing:.5px}
+  .legend{position:absolute;left:16px;bottom:14px;background:rgba(251,248,240,.92);
+    border:1px solid var(--border);border-radius:8px;padding:9px 11px;font-size:12px;max-width:260px}
+  .legend .lh{font-weight:bold;margin-bottom:5px;color:var(--muted)}
+  .legend .item{display:flex;align-items:center;gap:7px;padding:2px 0;cursor:pointer}
+  .legend .dot{width:11px;height:11px;border-radius:50%;flex:none}
+  .legend .item.off{opacity:.32;text-decoration:line-through}
+  .hint{position:absolute;right:16px;bottom:14px;font-size:11px;color:var(--muted);
+    background:rgba(251,248,240,.8);padding:4px 8px;border-radius:6px}
+  .right{width:36%;display:flex;flex-direction:column;min-width:380px;background:var(--panel)}
+  .toolbar{padding:11px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center}
+  .toolbar input{flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:#fff}
+  .toolbar button{padding:7px 11px;border:1px solid var(--border);border-radius:6px;background:#fff;
+    cursor:pointer;font-size:12px;color:var(--ink);white-space:nowrap}
+  .toolbar button:hover{border-color:var(--accent);color:var(--accent)}
+  .scroll{flex:1;overflow-y:auto}
+  .panel{padding:16px 20px}
+  /* 研究发现 */
+  .findings .fh{font-size:15px;font-weight:bold;margin-bottom:12px;color:#3a2f25;
+    border-left:4px solid var(--accent);padding-left:9px}
+  .finding{background:#fff;border:1px solid var(--border);border-radius:8px;padding:11px 13px;margin-bottom:10px}
+  .finding .ft{font-weight:bold;font-size:13.5px;color:var(--accent);margin-bottom:4px}
+  .finding .fd{font-size:12.5px;color:#555;line-height:1.6}
+  .finding .num{display:inline-block;width:20px;height:20px;line-height:20px;text-align:center;
+    background:var(--accent);color:#fff;border-radius:50%;font-size:11px;margin-right:6px}
+  /* 棋手画像 */
+  .back{font-size:12px;color:var(--muted);cursor:pointer;margin-bottom:10px;display:inline-block}
+  .back:hover{color:var(--accent)}
+  .pname{font-size:24px;font-weight:bold;color:#3a2f25}
+  .ptag{display:inline-block;margin-left:10px;font-size:12px;color:#fff;padding:3px 11px;border-radius:20px;vertical-align:middle}
+  .kw{margin:10px 0 4px;display:flex;flex-wrap:wrap;gap:6px}
+  .chip{font-size:12px;padding:3px 10px;border-radius:14px;background:#F0E9DA;border:1px solid var(--border);color:#5a4f3f}
+  .pmeta{font-size:12.5px;color:var(--muted);margin:10px 0 4px;display:flex;gap:16px;flex-wrap:wrap}
+  .pmeta b{color:var(--ink);font-size:14px}
+  .wdl b:nth-child(1){color:var(--accent)}
+  h3.sec{font-size:13px;color:var(--muted);margin:18px 0 9px;letter-spacing:.5px;
+    border-left:3px solid var(--gold);padding-left:8px}
+  #radar{display:block;margin:4px auto 0}
+  .sim{display:flex;align-items:center;gap:9px;padding:7px 9px;border:1px solid var(--border);
+    border-radius:7px;margin-bottom:7px;background:#fff;cursor:pointer;font-size:13px}
+  .sim:hover{border-color:var(--accent)}
+  .sim .nm{min-width:64px;font-weight:bold}
+  .sim .bar{flex:1;height:7px;background:#eee;border-radius:4px;overflow:hidden}
+  .sim .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--gold),#E0B84a)}
+  .sim .sc{font-size:11px;color:var(--muted);min-width:42px;text-align:right}
+  .more{cursor:pointer;color:var(--muted);font-size:12.5px;margin-top:4px;user-select:none}
+  .more:hover{color:var(--accent)}
+  table.feat{width:100%;border-collapse:collapse;font-size:12px;margin-top:8px}
+  table.feat td{padding:4px 7px;border-bottom:1px solid #eee}
+  table.feat td.k{color:var(--muted)} table.feat td.v{text-align:right;font-variant-numeric:tabular-nums}
+  select.cmp{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;
+    font-size:13px;background:#fff;color:var(--ink)}
+  .cmplegend{display:flex;gap:18px;margin:10px 0 2px;font-size:12.5px;color:#555}
+  .cmplegend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:middle}
+  .dist{text-align:center;font-size:13px;margin-top:6px}
+  .dist b{font-size:16px;color:var(--accent)}
+  .meta-foot{font-size:11px;color:var(--muted);padding:11px 18px;border-top:1px solid var(--border);line-height:1.7}
+  .pos{color:#1565C0}.neg{color:#C0392B}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="left">
+    <div class="title"><h1>棋风地图</h1>
+      <div class="sub">中国象棋大师风格空间 · 位置近=风格似 · 同色=同一流派 · 点越大=对局越多</div></div>
+    <canvas id="scatter"></canvas>
+    <div class="legend" id="legend"></div>
+    <div class="hint">滚轮缩放 · 拖拽平移 · 悬停查看 · 单击锁定</div>
+  </div>
+  <div class="right">
+    <div class="toolbar">
+      <input id="searchBox" placeholder="搜索棋手姓名…">
+      <button id="findBtn">研究发现</button>
+    </div>
+    <div class="scroll"><div id="panel"></div></div>
+    <div class="meta-foot" id="metaFoot"></div>
+  </div>
+</div>
+<script>
+"use strict";
+const DATA = window.PLAYER_DATA;
+const PALETTE = ["#C0392B","#1565C0","#2E7D32","#6A1B9A","#EF6C00","#00838F","#5D4037","#AD1457"];
+const players = DATA.players, clusters = DATA.clusters, meta = DATA.meta;
+const axes = meta.radar_axes;
+const LABELS = {
+  win_rate:"胜率(胜/总)", draw_rate:"和棋率", score_rate:"得分率",
+  red_win_rate:"先手胜率", black_win_rate:"后手胜率",
+  avg_plies:"平均步数", captures_per_game:"每局吃子数", checks_per_game:"每局将军数",
+  quick_win_rate:"速胜率", long_game_rate:"长局率", central_cannon_rate:"中炮率",
+  elephant_rate:"飞相率", pawn_point_rate:"仙人指路率", horse_rate:"起马率",
+  opening_entropy:"开局熵", pingfengma_rate:"屏风马率",
+  endgame_rate:"残局率", avg_endgame_len:"平均残局长度",
+};
+const zh = k => LABELS[k] || k;
+const colOf = c => PALETTE[c % PALETTE.length];
+const cnameById = {}; clusters.forEach(c => cnameById[c.id] = c);
+
+const cv = document.getElementById("scatter"), ctx = cv.getContext("2d");
+let view = {scale:1, ox:0, oy:0}, hover=null, selected=null, hidden=new Set();
+
+// 影响力 → 节点半径(sqrt 映射)
+const proms = players.map(p=>p.prominence||p.games);
+const pMin=Math.sqrt(Math.min(...proms)), pMax=Math.sqrt(Math.max(...proms));
+function radiusOf(p){ const t=(Math.sqrt(p.prominence||p.games)-pMin)/((pMax-pMin)||1);
+  return 7 + t*12; }
+
+// ---------- 坐标系 ----------
+const bounds=(()=>{let xs=players.map(p=>p.x),ys=players.map(p=>p.y);
+  return {x0:Math.min(...xs),x1:Math.max(...xs),y0:Math.min(...ys),y1:Math.max(...ys)};})();
+function fitView(){
+  const dpr=window.devicePixelRatio||1, w=cv.clientWidth, h=cv.clientHeight;
+  cv.width=w*dpr; cv.height=h*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  const pad=90, bw=(bounds.x1-bounds.x0)||1, bh=(bounds.y1-bounds.y0)||1;
+  view.base=Math.min((w-2*pad)/bw,(h-2*pad)/bh);
+  view.cx=w/2; view.cy=h/2; view.mx=(bounds.x0+bounds.x1)/2; view.my=(bounds.y0+bounds.y1)/2;
+}
+function toScreen(p){ const s=view.base*view.scale;
+  return [view.cx+(p.x-view.mx)*s+view.ox, view.cy-(p.y-view.my)*s+view.oy]; }
+
+// ---------- 凸包(势力范围) ----------
+function convexHull(pts){
+  if(pts.length<3) return pts.slice();
+  const p=pts.slice().sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+  const cr=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]);
+  const lo=[],up=[];
+  for(const q of p){while(lo.length>=2&&cr(lo[lo.length-2],lo[lo.length-1],q)<=0)lo.pop();lo.push(q);}
+  for(let i=p.length-1;i>=0;i--){const q=p[i];while(up.length>=2&&cr(up[up.length-2],up[up.length-1],q)<=0)up.pop();up.push(q);}
+  lo.pop();up.pop();return lo.concat(up);
+}
+function padHull(hull,pad){
+  const cx=hull.reduce((s,q)=>s+q[0],0)/hull.length, cy=hull.reduce((s,q)=>s+q[1],0)/hull.length;
+  return hull.map(([x,y])=>{const dx=x-cx,dy=y-cy,d=Math.hypot(dx,dy)||1;return [x+dx/d*pad,y+dy/d*pad];});
+}
+function blobPath(poly){
+  const n=poly.length; ctx.beginPath();
+  const mid=(i,j)=>[(poly[i][0]+poly[j][0])/2,(poly[i][1]+poly[j][1])/2];
+  let m0=mid(n-1,0); ctx.moveTo(m0[0],m0[1]);
+  for(let i=0;i<n;i++){const m=mid(i,(i+1)%n);ctx.quadraticCurveTo(poly[i][0],poly[i][1],m[0],m[1]);}
+  ctx.closePath();
+}
+function drawHulls(){
+  for(const c of clusters){
+    if(hidden.has(c.id)) continue;
+    const pts=players.filter(p=>p.cluster===c.id).map(toScreen);
+    if(!pts.length) continue;
+    const col=colOf(c.id);
+    ctx.save(); ctx.globalAlpha=1; ctx.fillStyle=col; ctx.strokeStyle=col;
+    ctx.globalAlpha=0.09; ctx.lineWidth=2;
+    if(pts.length===1){ const[x,y]=pts[0]; ctx.beginPath();ctx.arc(x,y,38,0,7);ctx.fill();
+      ctx.globalAlpha=0.3;ctx.stroke(); }
+    else if(pts.length===2){ ctx.lineCap="round"; ctx.lineWidth=72;
+      ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);ctx.lineTo(pts[1][0],pts[1][1]);ctx.stroke();
+      ctx.globalAlpha=0.28;ctx.lineWidth=2; }
+    else { const poly=padHull(convexHull(pts),34); blobPath(poly); ctx.fill();
+      ctx.globalAlpha=0.32; ctx.stroke(); }
+    // 流派名标在重心
+    const cx=pts.reduce((s,q)=>s+q[0],0)/pts.length, cy=pts.reduce((s,q)=>s+q[1],0)/pts.length;
+    ctx.globalAlpha=0.9; ctx.fillStyle=col; ctx.font="bold 14px 'Microsoft YaHei'";
+    ctx.textAlign="center"; ctx.lineWidth=3; ctx.strokeStyle="rgba(246,241,230,.9)";
+    const ly=cy - (pts.length>2?52:46);
+    ctx.strokeText(c.name,cx,ly); ctx.fillText(c.name,cx,ly);
+    ctx.restore();
+  }
+}
+
+// ---------- 主绘制 ----------
+function draw(){
+  const w=cv.clientWidth,h=cv.clientHeight;
+  ctx.clearRect(0,0,w,h);
+  drawRiver(w,h);
+  drawHulls();
+  // 参考十字 + 轴含义
+  ctx.strokeStyle="rgba(120,106,79,.18)"; ctx.lineWidth=1;
+  const c0=toScreen({x:view.mx,y:bounds.y0}); ctx.beginPath();ctx.moveTo(c0[0],0);ctx.lineTo(c0[0],h);ctx.stroke();
+  const r0=toScreen({x:bounds.x0,y:view.my}); ctx.beginPath();ctx.moveTo(0,r0[1]);ctx.lineTo(w,r0[1]);ctx.stroke();
+  const vx=Math.max(70,Math.min(w-70,c0[0])), hy=Math.max(22,Math.min(h-14,r0[1]));
+  ctx.fillStyle="#a89878"; ctx.font="12px 'Microsoft YaHei'"; ctx.textBaseline="middle";
+  ctx.textAlign="right"; ctx.fillText("稳健 · 多变 · 和棋多 →",w-10,hy-9);
+  ctx.textAlign="left"; ctx.fillText("← 激进 · 中炮 · 吃子多",10,hy-9);
+  ctx.textAlign="center"; ctx.fillText("↑ 善磨残局",vx,16); ctx.fillText("↓ 速攻速决",vx,h-12);
+  // 选中时:向 Top5 相似棋手辐射连线(关系网络)
+  if(selected && !hidden.has(selected.cluster)){
+    const [ax,ay]=toScreen(selected);
+    for(const {q,s} of similarTo(selected,5)){
+      if(hidden.has(q.cluster)) continue;
+      const [bx,by]=toScreen(q), t=(s+1)/2;
+      ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);
+      ctx.strokeStyle="rgba(184,134,11,"+(0.12+0.55*t).toFixed(2)+")";
+      ctx.lineWidth=1+2.5*t; ctx.stroke();
+    }
+  }
+  // 节点 + 标签
+  for(const p of players){
+    if(hidden.has(p.cluster)) continue;
+    const [sx,sy]=toScreen(p), r=radiusOf(p), col=colOf(p.cluster);
+    ctx.beginPath();ctx.arc(sx,sy,r,0,7);
+    ctx.fillStyle=col; ctx.globalAlpha=(selected&&selected!==p)?0.5:0.9; ctx.fill(); ctx.globalAlpha=1;
+    if(p===selected||p===hover){ctx.lineWidth=3;ctx.strokeStyle="#2b2b2b";ctx.stroke();}
+    // 姓名常显(白描边保证可读)
+    ctx.font=(p===selected?"bold ":"")+"12px 'Microsoft YaHei'"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.lineWidth=3.5; ctx.strokeStyle="rgba(246,241,230,.92)";
+    ctx.strokeText(p.player,sx,sy+r+10); ctx.fillStyle="#3a2f25"; ctx.fillText(p.player,sx,sy+r+10);
+  }
+}
+// 国风:淡淡的楚河汉界
+function drawRiver(w,h){
+  const y=h/2, bh=Math.max(46,h*0.09);
+  ctx.save(); ctx.globalAlpha=0.05; ctx.fillStyle="#5b6f8a";
+  ctx.fillRect(0,y-bh/2,w,bh);
+  ctx.globalAlpha=0.07; ctx.fillStyle=var_river(); ctx.font="bold 26px KaiTi,'Microsoft YaHei'";
+  ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.letterSpacing="8px";
+  ctx.fillText("楚 河",w*0.3,y); ctx.fillText("汉 界",w*0.7,y);
+  ctx.restore();
+}
+function var_river(){return (getComputedStyle(document.documentElement).getPropertyValue('--river')||'#7B6A4F').trim();}
+
+// ---------- 命中 ----------
+function pick(mx,my){ let best=null,bd=1e9;
+  for(const p of players){ if(hidden.has(p.cluster))continue; const[sx,sy]=toScreen(p);
+    const d=Math.hypot(sx-mx,sy-my); if(d<radiusOf(p)+4&&d<bd){bd=d;best=p;} } return best; }
+
+// ---------- 交互 ----------
+let drag=null;
+cv.addEventListener("mousedown",e=>{drag={x:e.clientX,y:e.clientY,ox:view.ox,oy:view.oy,moved:false};});
+window.addEventListener("mousemove",e=>{
+  const r=cv.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+  if(drag){const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.abs(dx)+Math.abs(dy)>3)drag.moved=true;
+    view.ox=drag.ox+dx;view.oy=drag.oy+dy;draw();return;}
+  const hp=pick(mx,my); if(hp!==hover){hover=hp;draw();cv.style.cursor=hp?"pointer":"grab";}
+});
+window.addEventListener("mouseup",e=>{
+  if(drag&&!drag.moved){const r=cv.getBoundingClientRect();const p=pick(e.clientX-r.left,e.clientY-r.top);if(p)selectPlayer(p);}
+  drag=null;
+});
+cv.addEventListener("wheel",e=>{e.preventDefault();const f=e.deltaY<0?1.12:1/1.12;
+  view.scale=Math.max(0.3,Math.min(8,view.scale*f));draw();},{passive:false});
+
+// ---------- 相似度 ----------
+function cosine(a,b){let d=0,na=0,nb=0;for(let i=0;i<a.length;i++){d+=a[i]*b[i];na+=a[i]*a[i];nb+=b[i]*b[i];}
+  return d/(Math.sqrt(na)*Math.sqrt(nb)+1e-9);}
+function similarTo(p,n=5){return players.filter(q=>q!==p).map(q=>({q,s:cosine(p.z,q.z)}))
+  .sort((a,b)=>b.s-a.s).slice(0,n);}
+
+// ---------- 右侧:研究发现 ----------
+function showFindings(){
+  selected=null; draw(); document.getElementById("searchBox").value="";
+  const fs=(meta.findings||[]).map((f,i)=>
+    `<div class="finding"><div class="ft"><span class="num">${i+1}</span>${f.t}</div><div class="fd">${f.d}</div></div>`).join("");
+  document.getElementById("panel").innerHTML=`<div class="panel findings">
+    <div class="fh">研究发现 · 这张地图告诉我们什么</div>${fs}
+    <h3 class="sec">五大风格流派</h3>
+    ${clusters.map(c=>`<div class="finding"><div class="ft" style="color:${colOf(c.id)}">${c.name}（${c.size}人）</div>
+      <div class="fd">${players.filter(p=>p.cluster===c.id).map(p=>p.player).join("、")}<br>
+      <span style="color:#999">关键词:${(c.keywords||[]).join(" / ")}</span></div></div>`).join("")}
+    <p style="color:#999;font-size:12px;margin-top:10px">点击地图上任意棋手查看个人画像。</p></div>`;
+}
+
+// ---------- 右侧:棋手画像(分层) ----------
+function selectPlayer(p){selected=p;draw();renderPanel(p);document.getElementById("searchBox").value=p.player;}
+function renderPanel(p){
+  const col=colOf(p.cluster), c=cnameById[p.cluster], kws=(c&&c.keywords)||[];
+  const sims=similarTo(p);
+  const simHtml=sims.map(({q,s})=>{const pct=Math.round(((s+1)/2)*100);
+    return `<div class="sim" onclick="selectByName('${q.player}')">
+      <span style="width:9px;height:9px;border-radius:50%;background:${colOf(q.cluster)}"></span>
+      <span class="nm">${q.player}</span><span class="bar"><i style="width:${pct}%"></i></span>
+      <span class="sc">${s.toFixed(3)}</span></div>`;}).join("");
+  const featRows=meta.feature_cols.map(k=>`<tr><td class="k">${zh(k)}</td><td class="v">${p.features[k]}</td></tr>`).join("");
+  document.getElementById("panel").innerHTML=`<div class="panel">
+    <span class="back" onclick="showFindings()">← 返回研究发现</span>
+    <div><span class="pname">${p.player}</span><span class="ptag" style="background:${col}">${p.cluster_name}</span></div>
+    <div class="kw">${kws.map(k=>`<span class="chip">${k}</span>`).join("")}</div>
+    <div class="pmeta">
+      <span>得分率 <b>${(p.score_rate*100).toFixed(1)}%</b></span>
+      <span class="wdl"><b>${p.wins}</b>胜 <b>${p.draws}</b>和 <b>${p.losses}</b>负</span>
+      <span>对局 <b>${p.games}</b></span></div>
+    <h3 class="sec">风格雷达</h3>
+    <canvas id="radar" width="320" height="270"></canvas>
+    <h3 class="sec">风格最相似的棋手</h3>${simHtml}
+    <h3 class="sec">与其他大师对比</h3>
+    <select id="cmpSel" class="cmp"><option value="">选择对手…</option>
+      ${players.filter(q=>q!==p).map(q=>`<option>${q.player}</option>`).join("")}</select>
+    <div class="more" id="moreBtn">▸ 展开详细统计数据</div>
+    <table class="feat" id="featTbl" style="display:none">${featRows}</table>
+  </div>`;
+  drawRadar(p);
+  document.getElementById("cmpSel").onchange=function(){
+    const b=players.find(x=>x.player===this.value); if(b)renderCompare(p,b);};
+  document.getElementById("moreBtn").onclick=function(){
+    const t=document.getElementById("featTbl"), open=t.style.display==="none";
+    t.style.display=open?"table":"none"; this.textContent=(open?"▾ 收起":"▸ 展开")+"详细统计数据";};
+}
+function selectByName(name){const p=players.find(x=>x.player===name);if(p)selectPlayer(p);}
+
+// ---------- 两位大师风格对比 ----------
+const CMP_A="#C0392B", CMP_B="#1565C0";
+function renderCompare(a,b){
+  selected=a; draw();
+  const dist=euclid(a.z,b.z);
+  const diffs=meta.feature_cols.map((f,i)=>({f,d:Math.abs(a.z[i]-b.z[i]),av:a.features[f],bv:b.features[f],aHi:a.z[i]>=b.z[i]}))
+    .sort((x,y)=>y.d-x.d).slice(0,6);
+  const rows=diffs.map(o=>`<tr><td class="k">${zh(o.f)}</td>
+    <td class="v" style="${o.aHi?'font-weight:bold;color:'+CMP_A:''}">${o.av}</td>
+    <td class="v" style="${!o.aHi?'font-weight:bold;color:'+CMP_B:''}">${o.bv}</td></tr>`).join("");
+  document.getElementById("panel").innerHTML=`<div class="panel">
+    <span class="back" onclick="selectByName('${a.player}')">← 返回 ${a.player} 画像</span>
+    <div class="pname" style="font-size:20px">${a.player} <span style="color:#999;font-weight:normal">⇄</span> ${b.player}</div>
+    <div class="cmplegend">
+      <span><i style="background:${CMP_A}"></i>${a.player}（${a.cluster_name}）</span>
+      <span><i style="background:${CMP_B}"></i>${b.player}（${b.cluster_name}）</span></div>
+    <canvas id="radar" width="320" height="270"></canvas>
+    <div class="dist">风格距离 <b>${dist.toFixed(2)}</b> <span style="color:#999">（标准化空间欧氏距离，越小越像）</span></div>
+    <h3 class="sec">差异最大的特征（粗体=该项更高）</h3>
+    <table class="feat"><tr><td class="k" style="color:#999">特征</td>
+      <td class="v" style="color:${CMP_A}">${a.player}</td><td class="v" style="color:${CMP_B}">${b.player}</td></tr>${rows}</table>
+    <h3 class="sec">换一位对手</h3>
+    <select id="cmpSel2" class="cmp"><option value="">选择对手…</option>
+      ${players.filter(q=>q!==a).map(q=>`<option ${q===b?'selected':''}>${q.player}</option>`).join("")}</select>
+  </div>`;
+  drawRadarOn("radar",[{radar:a.radar,color:CMP_A},{radar:b.radar,color:CMP_B,dash:true}]);
+  document.getElementById("cmpSel2").onchange=function(){
+    const nb=players.find(x=>x.player===this.value); if(nb)renderCompare(a,nb);};
+}
+
+// ---------- 雷达图(可叠加多人) ----------
+function drawRadarOn(canvasId, entries){
+  const c=document.getElementById(canvasId),g=c.getContext("2d");
+  const W=c.width,H=c.height,cx=W/2,cy=H/2+6,R=Math.min(W,H)/2-42,N=axes.length;
+  g.clearRect(0,0,W,H);
+  for(let ring=1;ring<=4;ring++){g.beginPath();
+    for(let i=0;i<=N;i++){const a=-Math.PI/2+i/N*2*Math.PI,rr=R*ring/4;
+      const x=cx+rr*Math.cos(a),y=cy+rr*Math.sin(a);i?g.lineTo(x,y):g.moveTo(x,y);}
+    g.strokeStyle="#e2ddd0";g.stroke();}
+  for(let i=0;i<N;i++){const a=-Math.PI/2+i/N*2*Math.PI;
+    g.beginPath();g.moveTo(cx,cy);g.lineTo(cx+R*Math.cos(a),cy+R*Math.sin(a));g.strokeStyle="#e2ddd0";g.stroke();
+    g.fillStyle="#555";g.font="12px 'Microsoft YaHei'";g.textAlign="center";
+    g.fillText(axes[i],cx+(R+20)*Math.cos(a),cy+(R+20)*Math.sin(a)+4);}
+  for(const e of entries){
+    g.beginPath();
+    for(let i=0;i<=N;i++){const idx=i%N,a=-Math.PI/2+idx/N*2*Math.PI,v=e.radar[axes[idx]];
+      const x=cx+R*v*Math.cos(a),y=cy+R*v*Math.sin(a);i?g.lineTo(x,y):g.moveTo(x,y);}
+    g.setLineDash(e.dash?[5,4]:[]);
+    g.fillStyle=e.color+"33";g.fill();g.strokeStyle=e.color;g.lineWidth=2;g.stroke();
+  }
+  g.setLineDash([]);
+}
+function drawRadar(p){drawRadarOn("radar",[{radar:p.radar,color:colOf(p.cluster)}]);}
+function euclid(a,b){let s=0;for(let i=0;i<a.length;i++)s+=(a[i]-b[i])**2;return Math.sqrt(s);}
+
+// ---------- 图例 ----------
+function renderLegend(){
+  const el=document.getElementById("legend");
+  el.innerHTML=`<div class="lh">风格流派（点击隐藏/显示）</div>`+
+    clusters.map(c=>`<div class="item ${hidden.has(c.id)?'off':''}" data-id="${c.id}">
+      <span class="dot" style="background:${colOf(c.id)}"></span>${c.name}（${c.size}人）</div>`).join("");
+  el.querySelectorAll(".item").forEach(it=>it.onclick=()=>{const id=+it.dataset.id;
+    hidden.has(id)?hidden.delete(id):hidden.add(id);renderLegend();draw();});
+}
+
+// ---------- 底部元信息 ----------
+function renderFoot(){
+  const ld=meta.loadings;
+  const top=k=>meta.feature_cols.map(f=>({f,v:ld[f][k]})).sort((a,b)=>Math.abs(b.v)-Math.abs(a.v)).slice(0,4)
+    .map(o=>`<span class="${o.v>=0?'pos':'neg'}">${zh(o.f)}(${o.v.toFixed(2)})</span>`).join("、");
+  document.getElementById("metaFoot").innerHTML=
+    `棋手 ${meta.n_players} 名 · 对局 ${meta.n_games} 盘 · 群体数 ${meta.k}`+
+    (meta.silhouette!=null?` · 轮廓系数 ${meta.silhouette}`:"")+
+    `<br>主成分方差解释:第一主成分 ${(meta.pca_explained[0]*100).toFixed(1)}% / 第二主成分 ${(meta.pca_explained[1]*100).toFixed(1)}%`+
+    `<br>横轴主导特征:${top(0)}<br>纵轴主导特征:${top(1)}`;
+}
+
+// ---------- 搜索 ----------
+const sb=document.getElementById("searchBox");
+sb.addEventListener("input",e=>{const q=e.target.value.trim();if(!q)return;
+  const p=players.find(x=>x.player.includes(q));if(p){hover=p;draw();}});
+sb.addEventListener("keydown",e=>{if(e.key==="Enter"){const q=e.target.value.trim();
+  const p=players.find(x=>x.player.includes(q));if(p)selectPlayer(p);}});
+document.getElementById("findBtn").onclick=showFindings;
+
+// ---------- 启动 ----------
+window.addEventListener("resize",()=>{fitView();draw();});
+fitView();renderLegend();renderFoot();showFindings();draw();
+</script>
+</body>
+</html>
