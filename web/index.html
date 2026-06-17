@@ -28,6 +28,14 @@
   .legend .item.off{opacity:.32;text-decoration:line-through}
   .hint{position:absolute;right:16px;bottom:14px;font-size:11px;color:var(--muted);
     background:rgba(251,248,240,.8);padding:4px 8px;border-radius:6px}
+  .timebar{position:absolute;top:14px;left:50%;transform:translateX(-50%);
+    background:rgba(251,248,240,.94);border:1px solid var(--border);border-radius:22px;
+    padding:5px 8px;display:flex;align-items:center;gap:4px;font-size:12px}
+  .timebar .tlabel{color:var(--muted);margin:0 4px}
+  .timebar button{border:none;background:transparent;padding:5px 12px;border-radius:16px;
+    cursor:pointer;font-size:12px;color:var(--ink)}
+  .timebar button.on{background:var(--accent);color:#fff}
+  .timebar button:not(.on):hover{background:#EFE7D5}
   .right{width:36%;display:flex;flex-direction:column;min-width:380px;background:var(--panel)}
   .toolbar{padding:11px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center}
   .toolbar input{flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:#fff}
@@ -85,6 +93,11 @@
     <div class="title"><h1>棋风地图</h1>
       <div class="sub">中国象棋大师风格空间 · 位置近=风格似 · 同色=同一流派 · 点越大=对局越多</div></div>
     <canvas id="scatter"></canvas>
+    <div class="timebar" id="timebar">
+      <span class="tlabel">生涯阶段</span>
+      <button data-s="0">早期</button><button data-s="1">中期</button>
+      <button data-s="2">晚期</button><button data-s="3" class="on">全部生涯</button>
+    </div>
     <div class="legend" id="legend"></div>
     <div class="hint">滚轮缩放 · 拖拽平移 · 悬停查看 · 单击锁定</div>
   </div>
@@ -102,6 +115,9 @@
 const DATA = window.PLAYER_DATA;
 const PALETTE = ["#C0392B","#1565C0","#2E7D32","#6A1B9A","#EF6C00","#00838F","#5D4037","#AD1457"];
 const players = DATA.players, clusters = DATA.clusters, meta = DATA.meta;
+const trajs = DATA.trajectories || {};
+players.forEach(p=>{p._x=p.x;p._y=p.y;p._tx=p.x;p._ty=p.y;});   // 动画用显示坐标
+let stage = 3;                                                  // 0早 1中 2晚 3全生涯
 const axes = meta.radar_axes;
 const LABELS = {
   win_rate:"胜率(胜/总)", draw_rate:"和棋率", score_rate:"得分率",
@@ -136,7 +152,8 @@ function fitView(){
   view.cx=w/2; view.cy=h/2; view.mx=(bounds.x0+bounds.x1)/2; view.my=(bounds.y0+bounds.y1)/2;
 }
 function toScreen(p){ const s=view.base*view.scale;
-  return [view.cx+(p.x-view.mx)*s+view.ox, view.cy-(p.y-view.my)*s+view.oy]; }
+  const X=(p._x!=null?p._x:p.x), Y=(p._y!=null?p._y:p.y);
+  return [view.cx+(X-view.mx)*s+view.ox, view.cy-(Y-view.my)*s+view.oy]; }
 
 // ---------- 凸包(势力范围) ----------
 function convexHull(pts){
@@ -184,6 +201,41 @@ function drawHulls(){
   }
 }
 
+// ---------- 时间演化:轨迹 + 阶段切换动画 ----------
+function drawTraj(p,prom){
+  const t=trajs[p.player]; if(!t||t.length<2) return;
+  const pts=t.map(tp=>toScreen({_x:tp.x,_y:tp.y})); const col=colOf(p.cluster);
+  ctx.save(); ctx.strokeStyle=col; ctx.lineJoin="round";
+  ctx.globalAlpha=prom?0.85:0.16; ctx.lineWidth=prom?2.6:1.2;
+  ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0],pts[i][1]); ctx.stroke();
+  // 末段箭头(指向晚期)
+  const a=pts[pts.length-2], b=pts[pts.length-1], ang=Math.atan2(b[1]-a[1],b[0]-a[0]);
+  ctx.globalAlpha=prom?0.9:0.3; ctx.fillStyle=col; ctx.beginPath();
+  ctx.moveTo(b[0],b[1]); ctx.lineTo(b[0]-10*Math.cos(ang-0.4),b[1]-10*Math.sin(ang-0.4));
+  ctx.lineTo(b[0]-10*Math.cos(ang+0.4),b[1]-10*Math.sin(ang+0.4)); ctx.closePath(); ctx.fill();
+  if(prom){ for(let i=0;i<pts.length;i++){const[x,y]=pts[i];
+    ctx.globalAlpha=0.95;ctx.fillStyle=col;ctx.beginPath();ctx.arc(x,y,i===pts.length-1?5:3.6,0,7);ctx.fill();
+    ctx.fillStyle="#3a2f25";ctx.font="11px 'Microsoft YaHei'";ctx.textAlign="center";
+    ctx.strokeStyle="rgba(246,241,230,.9)";ctx.lineWidth=3;
+    ctx.strokeText(t[i].label,x,y-9);ctx.fillText(t[i].label,x,y-9);} }
+  ctx.restore();
+}
+function targetPos(p){ if(stage===3) return [p.x,p.y];
+  const t=trajs[p.player]; return (t&&t[stage])?[t[stage].x,t[stage].y]:[p.x,p.y]; }
+function setStage(s){ stage=s;
+  document.querySelectorAll("#timebar button").forEach(b=>b.classList.toggle("on",+b.dataset.s===s));
+  players.forEach(p=>{const[tx,ty]=targetPos(p);p._tx=tx;p._ty=ty;}); startMorph();
+}
+let morphing=false;
+function startMorph(){ if(morphing)return; morphing=true;
+  (function step(){ let moving=false;
+    for(const p of players){const dx=p._tx-p._x,dy=p._ty-p._y;
+      if(Math.abs(dx)>1e-3||Math.abs(dy)>1e-3){p._x+=dx*0.16;p._y+=dy*0.16;moving=true;}
+      else{p._x=p._tx;p._y=p._ty;}}
+    draw(); if(moving)requestAnimationFrame(step); else morphing=false; })();
+}
+
 // ---------- 主绘制 ----------
 function draw(){
   const w=cv.clientWidth,h=cv.clientHeight;
@@ -199,6 +251,9 @@ function draw(){
   ctx.textAlign="right"; ctx.fillText("稳健 · 多变 · 和棋多 →",w-10,hy-9);
   ctx.textAlign="left"; ctx.fillText("← 激进 · 中炮 · 吃子多",10,hy-9);
   ctx.textAlign="center"; ctx.fillText("↑ 善磨残局",vx,16); ctx.fillText("↓ 速攻速决",vx,h-12);
+  // 时间演化:非"全生涯"阶段时,淡淡显示所有棋手的生涯轨迹
+  if(stage!==3){ for(const p of players){ if(!hidden.has(p.cluster)) drawTraj(p,false); } }
+  if(selected && trajs[selected.player] && !hidden.has(selected.cluster)) drawTraj(selected,true);
   // 选中时:向 Top5 相似棋手辐射连线(关系网络)
   if(selected && !hidden.has(selected.cluster)){
     const [ax,ay]=toScreen(selected);
@@ -287,6 +342,11 @@ function renderPanel(p){
       <span class="nm">${q.player}</span><span class="bar"><i style="width:${pct}%"></i></span>
       <span class="sc">${s.toFixed(3)}</span></div>`;}).join("");
   const featRows=meta.feature_cols.map(k=>`<tr><td class="k">${zh(k)}</td><td class="v">${p.features[k]}</td></tr>`).join("");
+  const tj=trajs[p.player];
+  const trajHtml=(tj&&tj.length>=2)?`<h3 class="sec">生涯风格演化</h3>
+    <div style="font-size:12.5px;color:#555;line-height:1.8">${tj.map(s=>
+      `<b>${s.label}</b>（${s.years}，${s.games}局）`).join(" → ")}
+      <br><span style="color:#999">点上方"生涯阶段"按钮看全场棋手随生涯迁移；地图上本人轨迹已高亮。</span></div>`:"";
   document.getElementById("panel").innerHTML=`<div class="panel">
     <span class="back" onclick="showFindings()">← 返回研究发现</span>
     <div><span class="pname">${p.player}</span><span class="ptag" style="background:${col}">${p.cluster_name}</span></div>
@@ -297,6 +357,7 @@ function renderPanel(p){
       <span>对局 <b>${p.games}</b></span></div>
     <h3 class="sec">风格雷达</h3>
     <canvas id="radar" width="320" height="270"></canvas>
+    ${trajHtml}
     <h3 class="sec">风格最相似的棋手</h3>${simHtml}
     <h3 class="sec">与其他大师对比</h3>
     <select id="cmpSel" class="cmp"><option value="">选择对手…</option>
@@ -397,6 +458,7 @@ sb.addEventListener("input",e=>{const q=e.target.value.trim();if(!q)return;
 sb.addEventListener("keydown",e=>{if(e.key==="Enter"){const q=e.target.value.trim();
   const p=players.find(x=>x.player.includes(q));if(p)selectPlayer(p);}});
 document.getElementById("findBtn").onclick=showFindings;
+document.querySelectorAll("#timebar button").forEach(b=>b.onclick=()=>setStage(+b.dataset.s));
 
 // ---------- 启动 ----------
 window.addEventListener("resize",()=>{fitView();draw();});

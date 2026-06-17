@@ -72,78 +72,123 @@ def _new_acc():
     }
 
 
-def build_profiles(games, min_games=5):
-    """聚合所有对局 → 棋手画像 DataFrame(过滤对局数 < min_games 的棋手)。"""
-    acc = defaultdict(_new_acc)
+def _accumulate(a, side, gf, rc):
+    """把一盘棋(某方视角)的统计累加到该棋手的累加器 a。"""
+    a["games"] += 1
+    a[f"{side}_games"] += 1
+    won = (rc == side)
+    if won:
+        a["wins"] += 1; a[f"{side}_wins"] += 1
+    elif rc == "draw":
+        a["draws"] += 1
+    elif rc in ("red", "black"):       # 有胜负且非己方胜 → 己方负
+        a["losses"] += 1
+    # rc 为 None(结果未知)的对局只计入总局,不计胜/和/负
+    a["plies_sum"] += gf["plies"]
+    a["caps_sum"] += gf[side]["caps"]
+    a["checks_sum"] += gf[side]["checks"]
+    if won and gf["plies"] <= QUICK_PLIES:
+        a["quick_wins"] += 1
+    if gf["plies"] >= LONG_PLIES:
+        a["long_games"] += 1
+    if gf["endgame_reached"]:
+        a["eg_games"] += 1; a["eg_len_sum"] += gf["endgame_len"]
+    if side == "red":
+        a["openings"].append(gf["opening"])
+    if side == "black" and gf["pingfengma"]:
+        a["pfm_games"] += 1
 
-    for g in games:
+
+def _finalize(a):
+    """累加器 → 一行特征(各比率/均值)。不含 'player'。"""
+    g = a["games"]
+    rg = max(a["red_games"], 1)
+    bg = max(a["black_games"], 1)
+    ops = a["openings"]
+    op_n = max(len(ops), 1)
+    decided = max(a["wins"] + a["draws"] + a["losses"], 1)
+    return {
+        "games": g,
+        "wins": a["wins"], "draws": a["draws"], "losses": a["losses"],
+        "win_rate": a["wins"] / g,
+        "score_rate": (a["wins"] + 0.5 * a["draws"]) / decided,   # 得分率(胜+半和)
+        "draw_rate": a["draws"] / decided,                        # 和棋率(风格特征)
+        "red_win_rate": a["red_wins"] / rg,
+        "black_win_rate": a["black_wins"] / bg,
+        "avg_plies": a["plies_sum"] / g,
+        "captures_per_game": a["caps_sum"] / g,
+        "checks_per_game": a["checks_sum"] / g,
+        "quick_win_rate": a["quick_wins"] / g,
+        "long_game_rate": a["long_games"] / g,
+        "central_cannon_rate": ops.count("中炮") / op_n,
+        "elephant_rate": ops.count("飞相") / op_n,
+        "pawn_point_rate": ops.count("仙人指路") / op_n,
+        "horse_rate": ops.count("起马") / op_n,
+        "opening_entropy": opening_entropy(ops),
+        "pingfengma_rate": a["pfm_games"] / bg,
+        "endgame_rate": a["eg_games"] / g,
+        "avg_endgame_len": a["eg_len_sum"] / max(a["eg_games"], 1),
+    }
+
+
+def build_profiles(games, min_games=5, gfs=None):
+    """聚合所有对局 → 棋手画像 DataFrame(过滤对局数 < min_games 的棋手)。
+    gfs:可传入预先算好的 game_features 列表(与 games 等长),避免重复重演。"""
+    if gfs is None:
+        gfs = [game_features(g) for g in games]
+    acc = defaultdict(_new_acc)
+    for g, gf in zip(games, gfs):
         if not g.get("red") or not g.get("black"):
             continue
-        gf = game_features(g)
         rc = g.get("result_code")
-        for side, name in (("red", g["red"]), ("black", g["black"])):
-            a = acc[name]
-            a["games"] += 1
-            a[f"{side}_games"] += 1
-            won = (rc == side)
-            if won:
-                a["wins"] += 1; a[f"{side}_wins"] += 1
-            elif rc == "draw":
-                a["draws"] += 1
-            elif rc in ("red", "black"):       # 有胜负且非己方胜 → 己方负
-                a["losses"] += 1
-            # rc 为 None(结果未知)的对局只计入总局,不计胜/和/负
-            a["plies_sum"] += gf["plies"]
-            a["caps_sum"] += gf[side]["caps"]
-            a["checks_sum"] += gf[side]["checks"]
-            if won and gf["plies"] <= QUICK_PLIES:
-                a["quick_wins"] += 1
-            if gf["plies"] >= LONG_PLIES:
-                a["long_games"] += 1
-            if gf["endgame_reached"]:
-                a["eg_games"] += 1; a["eg_len_sum"] += gf["endgame_len"]
-            if side == "red":
-                a["openings"].append(gf["opening"])
-            if side == "black" and gf["pingfengma"]:
-                a["pfm_games"] += 1
+        _accumulate(acc[g["red"]], "red", gf, rc)
+        _accumulate(acc[g["black"]], "black", gf, rc)
 
-    rows = []
-    for name, a in acc.items():
-        if a["games"] < min_games:
-            continue
-        g = a["games"]
-        rg = max(a["red_games"], 1)
-        bg = max(a["black_games"], 1)
-        ops = a["openings"]
-        op_n = max(len(ops), 1)
-        decided = max(a["wins"] + a["draws"] + a["losses"], 1)
-        rows.append({
-            "player": name,
-            "games": g,
-            "wins": a["wins"], "draws": a["draws"], "losses": a["losses"],
-            "win_rate": a["wins"] / g,
-            "score_rate": (a["wins"] + 0.5 * a["draws"]) / decided,   # 得分率(胜+半和)
-            "draw_rate": a["draws"] / decided,                        # 和棋率(风格特征)
-            "red_win_rate": a["red_wins"] / rg,
-            "black_win_rate": a["black_wins"] / bg,
-            "avg_plies": a["plies_sum"] / g,
-            "captures_per_game": a["caps_sum"] / g,
-            "checks_per_game": a["checks_sum"] / g,
-            "quick_win_rate": a["quick_wins"] / g,
-            "long_game_rate": a["long_games"] / g,
-            "central_cannon_rate": ops.count("中炮") / op_n,
-            "elephant_rate": ops.count("飞相") / op_n,
-            "pawn_point_rate": ops.count("仙人指路") / op_n,
-            "horse_rate": ops.count("起马") / op_n,
-            "opening_entropy": opening_entropy(ops),
-            "pingfengma_rate": a["pfm_games"] / bg,
-            "endgame_rate": a["eg_games"] / g,
-            "avg_endgame_len": a["eg_len_sum"] / max(a["eg_games"], 1),
-        })
+    rows = [{"player": name, **_finalize(a)} for name, a in acc.items() if a["games"] >= min_games]
     df = pd.DataFrame(rows)
     if "player" in df.columns:
         df = df.set_index("player").sort_index()
     return df
+
+
+def build_trajectories(games, keep, gfs=None):
+    """棋手风格时间演化:把每位棋手(限 keep 集合)的对局按日期排序,切成早/中/晚期,
+    各期单独聚合成一行特征向量。返回 {棋手: [{label, years, games, feat:[18维]}...]}。
+    带日期对局 ≥24 切 3 期,≥12 切 2 期,更少则不出轨迹。"""
+    if gfs is None:
+        gfs = [game_features(g) for g in games]
+    byp = defaultdict(list)
+    for g, gf in zip(games, gfs):
+        if not g.get("red") or not g.get("black"):
+            continue
+        yr = (g.get("date") or "")[:4]
+        if not (len(yr) == 4 and yr.isdigit() and yr != "0000"):
+            continue
+        rc = g.get("result_code")
+        for side in ("red", "black"):
+            if g[side] in keep:
+                byp[g[side]].append((g["date"], side, gf, rc))
+
+    out = {}
+    for name, items in byp.items():
+        items.sort(key=lambda t: t[0])
+        n = len(items)
+        nper = 3 if n >= 24 else (2 if n >= 12 else 0)
+        if nper == 0:
+            continue
+        labels = ["早期", "中期", "晚期"] if nper == 3 else ["前期", "后期"]
+        periods = []
+        for pi in range(nper):
+            chunk = items[pi * n // nper:(pi + 1) * n // nper]
+            a = _new_acc()
+            for (_d, side, gf, rc) in chunk:
+                _accumulate(a, side, gf, rc)
+            row = _finalize(a)
+            yrs = [it[0][:4] for it in chunk]
+            periods.append({"label": labels[pi], "years": f"{yrs[0]}–{yrs[-1]}",
+                            "games": a["games"], "feat": [row[c] for c in FEATURE_COLS]})
+        out[name] = periods
+    return out
 
 
 # 进入降维/聚类的特征列(不含 games:它只作点大小,不作风格维度)

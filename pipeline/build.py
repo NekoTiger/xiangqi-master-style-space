@@ -25,7 +25,7 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 
 from iccs import parse_dir
-from features import build_profiles, FEATURE_COLS
+from features import build_profiles, build_trajectories, game_features, FEATURE_COLS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -162,7 +162,8 @@ def main():
         sys.exit(1)
 
     print(f"[2/5] 提取特征 + 聚合棋手(门槛:对局数 ≥ {min_games})")
-    df = build_profiles(games, min_games=min_games)
+    gfs = [game_features(g) for g in games]          # 逐盘重演一次,profiles 与轨迹共用
+    df = build_profiles(games, min_games=min_games, gfs=gfs)
     print(f"      合格棋手 {len(df)} 名")
     if len(df) < 2:
         print("[x] 合格棋手不足,降低 --min-games 或喂更多棋谱。")
@@ -173,9 +174,22 @@ def main():
 
     print("[3/5] 标准化 + PCA 降维")
     X = df[FEATURE_COLS].to_numpy(dtype=float)
-    Xz = StandardScaler().fit_transform(X)
+    scaler = StandardScaler().fit(X)
+    Xz = scaler.transform(X)
     pca = PCA(n_components=2, random_state=42)
     xy = pca.fit_transform(Xz)
+
+    # 时间演化:每位棋手分期(早/中/晚),用同一 scaler+pca 投影到同一空间
+    trajectories = {}
+    for nm, periods in build_trajectories(games, set(df.index), gfs=gfs).items():
+        seq = []
+        for per in periods:
+            vz = scaler.transform(np.array(per["feat"], dtype=float).reshape(1, -1))
+            pxy = pca.transform(vz)[0]
+            seq.append({"label": per["label"], "years": per["years"], "games": per["games"],
+                        "x": round(float(pxy[0]), 4), "y": round(float(pxy[1]), 4)})
+        trajectories[nm] = seq
+    print(f"      生成 {len(trajectories)} 位棋手的时间演化轨迹")
     explained = [round(float(v), 4) for v in pca.explained_variance_ratio_]
     loadings = {f: [round(float(pca.components_[0][i]), 4),
                     round(float(pca.components_[1][i]), 4)]
@@ -248,6 +262,7 @@ def main():
     payload = {
         "players": players,
         "clusters": clusters,
+        "trajectories": trajectories,
         "meta": {
             "generated": datetime.datetime.now().isoformat(timespec="seconds"),
             "n_games": len(games), "n_players": len(df), "k": int(k),
