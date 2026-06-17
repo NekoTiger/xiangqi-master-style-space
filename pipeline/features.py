@@ -110,7 +110,7 @@ def _finalize(a):
     return {
         "games": g,
         "wins": a["wins"], "draws": a["draws"], "losses": a["losses"],
-        "win_rate": a["wins"] / g,
+        "win_rate": a["wins"] / decided,                          # 与和棋率/得分率同口径(已知结果局为分母)
         "score_rate": (a["wins"] + 0.5 * a["draws"]) / decided,   # 得分率(胜+半和)
         "draw_rate": a["draws"] / decided,                        # 和棋率(风格特征)
         "red_win_rate": a["red_wins"] / rg,
