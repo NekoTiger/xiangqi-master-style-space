@@ -36,6 +36,16 @@
     cursor:pointer;font-size:12px;color:var(--ink)}
   .timebar button.on{background:var(--accent);color:#fff}
   .timebar button:not(.on):hover{background:#EFE7D5}
+  .help-btn{position:absolute;top:16px;right:16px;width:28px;height:28px;border-radius:50%;z-index:6;
+    border:1px solid var(--border);background:rgba(251,248,240,.94);cursor:pointer;font-size:15px;color:var(--muted)}
+  .help-btn:hover{color:var(--accent);border-color:var(--accent)}
+  .help{position:absolute;top:52px;right:16px;width:308px;background:rgba(251,248,240,.97);z-index:6;
+    border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:12.5px;line-height:1.75;
+    color:#444;box-shadow:0 4px 18px rgba(0,0,0,.12)}
+  .help h4{font-size:13.5px;margin-bottom:7px;color:#3a2f25}
+  .help b{color:var(--accent)}
+  .help .x{position:absolute;top:7px;right:11px;cursor:pointer;color:#aaa;font-size:13px}
+  .help.hidden{display:none}
   .right{width:36%;display:flex;flex-direction:column;min-width:380px;background:var(--panel)}
   .toolbar{padding:11px 16px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center}
   .toolbar input{flex:1;padding:7px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:#fff}
@@ -100,6 +110,19 @@
     </div>
     <div class="legend" id="legend"></div>
     <div class="hint">滚轮缩放 · 拖拽平移 · 悬停查看 · 单击锁定</div>
+    <button class="help-btn" id="helpBtn" title="怎么读这张图">?</button>
+    <div class="help hidden" id="helpCard">
+      <span class="x" id="helpX">✕</span>
+      <h4>怎么读这张棋风地图</h4>
+      <div>· 每个点是一位大师，<b>位置越近 = 棋风越像</b>。<br>
+      · <b>横轴</b>：左=激进(中炮多、吃子凶)，右=稳健(开局多变、和棋多)。<br>
+      · <b>纵轴</b>：上=善磨残局，下=速攻速决。<br>
+      · <b>颜色</b>=自动聚出的风格流派(凸包圈出势力范围)。<br>
+      · <b>点大小</b>=该棋手全库对局数(活跃度)。<br>
+      · 顶部<b>生涯阶段</b>可看棋风随早/中/晚期迁移。<br>
+      · 点任意棋手 → 雷达 / 相似网络 / 双人对比。</div>
+      <div style="color:#999;margin-top:8px">注：坐标为 PCA 近似投影(约解释 54% 方差)，远近可信、细微位置不宜深究。</div>
+    </div>
   </div>
   <div class="right">
     <div class="toolbar">
@@ -129,6 +152,16 @@ const LABELS = {
   endgame_rate:"残局率", avg_endgame_len:"平均残局长度",
 };
 const zh = k => LABELS[k] || k;
+const FEATURE_DESC = {
+  win_rate:"已知结果局中获胜的比例", draw_rate:"已知结果局中和棋的比例", score_rate:"(胜+0.5×和)/已知结果局",
+  red_win_rate:"执红时的胜率", black_win_rate:"执黑时的胜率", avg_plies:"每盘平均着法步数",
+  captures_per_game:"每盘平均吃子次数", checks_per_game:"每盘平均将军次数",
+  quick_win_rate:"≤40步取胜的比例", long_game_rate:"≥100步的长局比例",
+  central_cannon_rate:"执红首着走中炮的比例", elephant_rate:"执红首着飞相的比例",
+  pawn_point_rate:"执红首着仙人指路的比例", horse_rate:"执红首着起马的比例",
+  opening_entropy:"开局类型分布的香农熵(越高越多变)", pingfengma_rate:"执黑走屏风马的比例",
+  endgame_rate:"进入残局阶段的对局比例", avg_endgame_len:"残局阶段平均步数",
+};
 const colOf = c => PALETTE[c % PALETTE.length];
 const cnameById = {}; clusters.forEach(c => cnameById[c.id] = c);
 
@@ -341,7 +374,7 @@ function renderPanel(p){
       <span style="width:9px;height:9px;border-radius:50%;background:${colOf(q.cluster)}"></span>
       <span class="nm">${q.player}</span><span class="bar"><i style="width:${pct}%"></i></span>
       <span class="sc">${s.toFixed(3)}</span></div>`;}).join("");
-  const featRows=meta.feature_cols.map(k=>`<tr><td class="k">${zh(k)}</td><td class="v">${p.features[k]}</td></tr>`).join("");
+  const featRows=meta.feature_cols.map(k=>`<tr title="${FEATURE_DESC[k]||''}"><td class="k">${zh(k)}</td><td class="v">${p.features[k]}</td></tr>`).join("");
   const tj=trajs[p.player];
   const trajHtml=(tj&&tj.length>=2)?`<h3 class="sec">生涯风格演化</h3>
     <div style="font-size:12.5px;color:#555;line-height:1.8">${tj.map(s=>
@@ -459,6 +492,10 @@ sb.addEventListener("keydown",e=>{if(e.key==="Enter"){const q=e.target.value.tri
   const p=players.find(x=>x.player.includes(q));if(p)selectPlayer(p);}});
 document.getElementById("findBtn").onclick=showFindings;
 document.querySelectorAll("#timebar button").forEach(b=>b.onclick=()=>setStage(+b.dataset.s));
+const helpCard=document.getElementById("helpCard");
+document.getElementById("helpBtn").onclick=()=>helpCard.classList.toggle("hidden");
+document.getElementById("helpX").onclick=()=>helpCard.classList.add("hidden");
+helpCard.classList.remove("hidden");   // 首次进入展示"怎么读这张图"
 
 // ---------- 启动 ----------
 window.addEventListener("resize",()=>{fitView();draw();});
