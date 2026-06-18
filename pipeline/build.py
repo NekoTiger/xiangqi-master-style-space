@@ -119,21 +119,24 @@ def _minmax(col):
 
 
 def pick_k(X, kmax=6):
-    """用轮廓系数在 k=2..kmax 中选最佳簇数(样本太少则退化)。返回 (k, labels, score)。"""
+    """用轮廓系数在 k=2..kmax 中选最佳簇数。返回 (k, labels, score, curve)。
+    curve = [{k, sil}...] 供前端画'轮廓系数随 k 变化'曲线,佐证 k 的选取。"""
     n = len(X)
     if n < 4:
-        return 1, np.zeros(n, dtype=int), float("nan")
+        return 1, np.zeros(n, dtype=int), float("nan"), []
     best = (2, None, -1.0)
+    curve = []
     for k in range(2, min(kmax, n - 1) + 1):
         km = KMeans(n_clusters=k, n_init=10, random_state=42).fit(X)
         if len(set(km.labels_)) < 2:
             continue
         s = silhouette_score(X, km.labels_)
+        curve.append({"k": k, "sil": round(float(s), 4)})
         if s > best[2]:
             best = (k, km.labels_, s)
     if best[1] is None:
-        return 1, np.zeros(n, dtype=int), float("nan")
-    return best
+        return 1, np.zeros(n, dtype=int), float("nan"), curve
+    return best[0], best[1], best[2], curve
 
 
 def main():
@@ -205,7 +208,7 @@ def main():
         print("      (未装 umap-learn,跳过 UMAP 坐标;PCA 坐标已足够)")
 
     print("[4/5] KMeans 聚类 + 轮廓系数选 k")
-    k, labels, sil = pick_k(Xz)
+    k, labels, sil, sil_curve = pick_k(Xz)
     print(f"      k={k}  silhouette={sil:.3f}" if sil == sil else f"      样本过少,k={k}")
 
     # 雷达 5 轴归一化
@@ -274,6 +277,7 @@ def main():
             "has_umap": umap_xy is not None,
             "min_games": min_games,
             "findings": findings,
+            "sil_curve": sil_curve,
         },
     }
 

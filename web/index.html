@@ -350,18 +350,44 @@ function cosine(a,b){let d=0,na=0,nb=0;for(let i=0;i<a.length;i++){d+=a[i]*b[i];
 function similarTo(p,n=5){return players.filter(q=>q!==p).map(q=>({q,s:cosine(p.z,q.z)}))
   .sort((a,b)=>b.s-a.s).slice(0,n);}
 
+// ---------- 聚类有效性:轮廓系数随 k 变化曲线 ----------
+function drawSilCurve(id){
+  const c=document.getElementById(id); if(!c) return; const g=c.getContext("2d");
+  const W=c.width,H=c.height,pad=36, cur=meta.sil_curve||[]; if(cur.length<2) return;
+  const ks=cur.map(d=>d.k), ss=cur.map(d=>d.sil);
+  const kmin=Math.min(...ks),kmax=Math.max(...ks),smin=Math.min(...ss)*0.92,smax=Math.max(...ss)*1.06;
+  const X=k=>pad+(k-kmin)/((kmax-kmin)||1)*(W-2*pad), Y=s=>H-pad-(s-smin)/((smax-smin)||1)*(H-2*pad);
+  g.clearRect(0,0,W,H);
+  g.strokeStyle="#ddd";g.lineWidth=1;g.beginPath();g.moveTo(pad,8);g.lineTo(pad,H-pad);g.lineTo(W-8,H-pad);g.stroke();
+  g.strokeStyle="#1565C0";g.lineWidth=2;g.beginPath();
+  cur.forEach((d,i)=>{const x=X(d.k),y=Y(d.sil);i?g.lineTo(x,y):g.moveTo(x,y);});g.stroke();
+  g.font="11px 'Microsoft YaHei'";g.textAlign="center";
+  cur.forEach(d=>{const x=X(d.k),y=Y(d.sil),sel=d.k===meta.k;
+    g.fillStyle=sel?"#C0392B":"#1565C0";g.beginPath();g.arc(x,y,sel?5:3.5,0,7);g.fill();
+    g.fillStyle="#777";g.fillText("k="+d.k,x,H-pad+14);
+    if(sel){g.fillStyle="#C0392B";g.font="bold 11px 'Microsoft YaHei'";g.fillText(d.sil.toFixed(3),x,y-9);g.font="11px 'Microsoft YaHei'";}});
+  g.fillStyle="#999";g.textAlign="left";g.fillText("轮廓系数",6,12);
+}
+
 // ---------- 右侧:研究发现 ----------
 function showFindings(){
   selected=null; draw(); document.getElementById("searchBox").value="";
   const fs=(meta.findings||[]).map((f,i)=>
     `<div class="finding"><div class="ft"><span class="num">${i+1}</span>${f.t}</div><div class="fd">${f.d}</div></div>`).join("");
+  const silSec=(meta.sil_curve&&meta.sil_curve.length>=2)?`
+    <h3 class="sec">聚类有效性验证</h3>
+    <canvas id="silCanvas" width="330" height="180" style="display:block;margin:0 auto"></canvas>
+    <p style="color:#666;font-size:12px">轮廓系数(silhouette)随簇数 k 变化：<b>k=${meta.k}</b> 取得最高值 ${meta.silhouette}，
+      故由算法自动选定 ${meta.k} 个流派(非人为指定)。值越高表示簇内越紧、簇间越分。</p>`:"";
   document.getElementById("panel").innerHTML=`<div class="panel findings">
     <div class="fh">研究发现 · 这张地图告诉我们什么</div>${fs}
+    ${silSec}
     <h3 class="sec">五大风格流派</h3>
     ${clusters.map(c=>`<div class="finding"><div class="ft" style="color:${colOf(c.id)}">${c.name}（${c.size}人）</div>
       <div class="fd">${players.filter(p=>p.cluster===c.id).map(p=>p.player).join("、")}<br>
       <span style="color:#999">关键词:${(c.keywords||[]).join(" / ")}</span></div></div>`).join("")}
     <p style="color:#999;font-size:12px;margin-top:10px">点击地图上任意棋手查看个人画像。</p></div>`;
+  drawSilCurve("silCanvas");
 }
 
 // ---------- 右侧:棋手画像(分层) ----------
