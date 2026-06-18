@@ -128,6 +128,7 @@
     <div class="toolbar">
       <input id="searchBox" placeholder="搜索棋手姓名…">
       <button id="findBtn">研究发现</button>
+      <button id="expBtn" title="导出当前地图为 PNG">导出图</button>
     </div>
     <div class="scroll"><div id="panel"></div></div>
     <div class="meta-foot" id="metaFoot"></div>
@@ -517,6 +518,13 @@ sb.addEventListener("input",e=>{const q=e.target.value.trim();if(!q)return;
 sb.addEventListener("keydown",e=>{if(e.key==="Enter"){const q=e.target.value.trim();
   const p=players.find(x=>x.player.includes(q));if(p)selectPlayer(p);}});
 document.getElementById("findBtn").onclick=showFindings;
+document.getElementById("expBtn").onclick=()=>{
+  const tmp=document.createElement("canvas"); tmp.width=cv.width; tmp.height=cv.height;
+  const tg=tmp.getContext("2d");
+  tg.fillStyle="#F1E9D8"; tg.fillRect(0,0,tmp.width,tmp.height); tg.drawImage(cv,0,0);
+  const a=document.createElement("a");
+  a.download=(selected?selected.player+"·":"")+"棋风地图.png"; a.href=tmp.toDataURL("image/png"); a.click();
+};
 document.querySelectorAll("#timebar button").forEach(b=>b.onclick=()=>setStage(+b.dataset.s));
 const helpCard=document.getElementById("helpCard");
 document.getElementById("helpBtn").onclick=()=>helpCard.classList.toggle("hidden");
