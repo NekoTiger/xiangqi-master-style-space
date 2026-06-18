@@ -15,6 +15,10 @@
   .app{display:flex;height:100vh}
   .left{width:64%;position:relative;border-right:1px solid var(--border);
     background:linear-gradient(#F6F1E6,#EFE7D5)}
+  .left.galaxy{background:#0a0c16}
+  .left.galaxy .title h1{color:#e8ecf7}
+  .left.galaxy .title .sub{color:#8b97bb}
+  .left.galaxy .hint{background:rgba(18,22,38,.75);color:#9aa6c8;border:1px solid #2a3050}
   #scatter{display:block;width:100%;height:100%;cursor:grab}
   #scatter:active{cursor:grabbing}
   .title{position:absolute;top:14px;left:20px;pointer-events:none}
@@ -128,6 +132,7 @@
     <div class="toolbar">
       <input id="searchBox" placeholder="搜索棋手姓名…">
       <button id="findBtn">研究发现</button>
+      <button id="modeBtn" title="切换视觉隐喻:古籍棋谱 / 星空星系">🌌 星空</button>
       <button id="expBtn" title="导出当前地图为 PNG">导出图</button>
     </div>
     <div class="scroll"><div id="panel"></div></div>
@@ -142,6 +147,9 @@ const players = DATA.players, clusters = DATA.clusters, meta = DATA.meta;
 const trajs = DATA.trajectories || {};
 players.forEach(p=>{p._x=p.x;p._y=p.y;p._tx=p.x;p._ty=p.y;});   // 动画用显示坐标
 let stage = 3;                                                  // 0早 1中 2晚 3全生涯
+let galaxy = false;                                            // 视觉隐喻:false=古籍 true=星系
+const STARS = Array.from({length:110},(_,i)=>(               // 确定性伪随机星点(分数坐标)
+  {fx:(i*0.61803398)%1, fy:((i*0.75487766)+0.137)%1, r:0.4+(i%3)*0.45, a:0.25+((i*7)%10)/22}));
 const axes = meta.radar_axes;
 const LABELS = {
   win_rate:"胜率(胜/总)", draw_rate:"和棋率", score_rate:"得分率",
@@ -274,14 +282,15 @@ function startMorph(){ if(morphing)return; morphing=true;
 function draw(){
   const w=cv.clientWidth,h=cv.clientHeight;
   ctx.clearRect(0,0,w,h);
-  drawRiver(w,h);
+  if(galaxy){ ctx.fillStyle="#0a0c16"; ctx.fillRect(0,0,w,h); drawStars(w,h); drawNebula(); }
+  else { drawRiver(w,h); }
   drawHulls();
   // 参考十字 + 轴含义
   ctx.strokeStyle="rgba(120,106,79,.18)"; ctx.lineWidth=1;
   const c0=toScreen({x:view.mx,y:bounds.y0}); ctx.beginPath();ctx.moveTo(c0[0],0);ctx.lineTo(c0[0],h);ctx.stroke();
   const r0=toScreen({x:bounds.x0,y:view.my}); ctx.beginPath();ctx.moveTo(0,r0[1]);ctx.lineTo(w,r0[1]);ctx.stroke();
   const vx=Math.max(70,Math.min(w-70,c0[0])), hy=Math.max(22,Math.min(h-14,r0[1]));
-  ctx.fillStyle="#a89878"; ctx.font="12px 'Microsoft YaHei'"; ctx.textBaseline="middle";
+  ctx.fillStyle=galaxy?"#7d8bb0":"#a89878"; ctx.font="12px 'Microsoft YaHei'"; ctx.textBaseline="middle";
   ctx.textAlign="right"; ctx.fillText("稳健 · 多变 · 和棋多 →",w-10,hy-9);
   ctx.textAlign="left"; ctx.fillText("← 激进 · 中炮 · 吃子多",10,hy-9);
   ctx.textAlign="center"; ctx.fillText("↑ 善磨残局",vx,16); ctx.fillText("↓ 速攻速决",vx,h-12);
@@ -303,14 +312,37 @@ function draw(){
   for(const p of players){
     if(hidden.has(p.cluster)) continue;
     const [sx,sy]=toScreen(p), r=radiusOf(p), col=colOf(p.cluster);
+    if(galaxy){                                    // 星体:发光晕 + 白核 + 色环
+      ctx.save();ctx.globalCompositeOperation="lighter";
+      const g=ctx.createRadialGradient(sx,sy,0,sx,sy,r*2.8);
+      g.addColorStop(0,col+"cc");g.addColorStop(0.5,col+"55");g.addColorStop(1,col+"00");
+      ctx.fillStyle=g;ctx.beginPath();ctx.arc(sx,sy,r*2.8,0,7);ctx.fill();ctx.restore();
+    }
     ctx.beginPath();ctx.arc(sx,sy,r,0,7);
-    ctx.fillStyle=col; ctx.globalAlpha=(selected&&selected!==p)?0.5:0.9; ctx.fill(); ctx.globalAlpha=1;
-    if(p===selected||p===hover){ctx.lineWidth=3;ctx.strokeStyle="#2b2b2b";ctx.stroke();}
-    // 姓名常显(白描边保证可读)
+    ctx.fillStyle=galaxy?"#ffffff":col; ctx.globalAlpha=(selected&&selected!==p)?(galaxy?0.65:0.5):0.95; ctx.fill(); ctx.globalAlpha=1;
+    if(galaxy){ctx.lineWidth=2;ctx.strokeStyle=col;ctx.stroke();}
+    if(p===selected||p===hover){ctx.lineWidth=3;ctx.strokeStyle=galaxy?"#fff":"#2b2b2b";ctx.stroke();}
+    // 姓名常显(描边保证可读)
     ctx.font=(p===selected?"bold ":"")+"12px 'Microsoft YaHei'"; ctx.textAlign="center"; ctx.textBaseline="middle";
-    ctx.lineWidth=3.5; ctx.strokeStyle="rgba(246,241,230,.92)";
-    ctx.strokeText(p.player,sx,sy+r+10); ctx.fillStyle="#3a2f25"; ctx.fillText(p.player,sx,sy+r+10);
+    ctx.lineWidth=3.5; ctx.strokeStyle=galaxy?"rgba(8,10,22,.85)":"rgba(246,241,230,.92)";
+    ctx.strokeText(p.player,sx,sy+r+10); ctx.fillStyle=galaxy?"#e8ecf7":"#3a2f25"; ctx.fillText(p.player,sx,sy+r+10);
   }
+}
+// 星系隐喻:背景星点 + 风格密度星云(加色叠加,密处发亮=势场)
+function drawStars(w,h){
+  ctx.save(); ctx.fillStyle="#cdd6ee";
+  for(const s of STARS){ ctx.globalAlpha=s.a; ctx.beginPath();ctx.arc(s.fx*w,s.fy*h,s.r*0.7,0,7);ctx.fill(); }
+  ctx.restore();
+}
+function drawNebula(){
+  ctx.save(); ctx.globalCompositeOperation="lighter";
+  for(const p of players){ if(hidden.has(p.cluster)) continue;
+    const [x,y]=toScreen(p), r=radiusOf(p)*9, col=colOf(p.cluster);
+    const g=ctx.createRadialGradient(x,y,0,x,y,r);
+    g.addColorStop(0,col+"4d"); g.addColorStop(0.5,col+"1f"); g.addColorStop(1,col+"00");
+    ctx.fillStyle=g; ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();
+  }
+  ctx.restore();
 }
 // 国风:淡淡的楚河汉界
 function drawRiver(w,h){
@@ -530,10 +562,15 @@ sb.addEventListener("input",e=>{const q=e.target.value.trim();if(!q)return;
 sb.addEventListener("keydown",e=>{if(e.key==="Enter"){const q=e.target.value.trim();
   const p=players.find(x=>x.player.includes(q));if(p)selectPlayer(p);}});
 document.getElementById("findBtn").onclick=showFindings;
+document.getElementById("modeBtn").onclick=function(){
+  galaxy=!galaxy; this.textContent=galaxy?"📜 古籍":"🌌 星空";
+  document.querySelector(".left").classList.toggle("galaxy",galaxy);
+  draw();
+};
 document.getElementById("expBtn").onclick=()=>{
   const tmp=document.createElement("canvas"); tmp.width=cv.width; tmp.height=cv.height;
   const tg=tmp.getContext("2d");
-  tg.fillStyle="#F1E9D8"; tg.fillRect(0,0,tmp.width,tmp.height); tg.drawImage(cv,0,0);
+  tg.fillStyle=galaxy?"#0a0c16":"#F1E9D8"; tg.fillRect(0,0,tmp.width,tmp.height); tg.drawImage(cv,0,0);
   const a=document.createElement("a");
   a.download=(selected?selected.player+"·":"")+"棋风地图.png"; a.href=tmp.toDataURL("image/png"); a.click();
 };
