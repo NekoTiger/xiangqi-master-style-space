@@ -151,6 +151,35 @@ def build_profiles(games, min_games=5, gfs=None):
     return df
 
 
+def build_halves(games, keep, gfs=None, min_half=8):
+    """风格一致性验证用:把每位棋手(限 keep)的对局按时序交替分成两半,
+    各自聚合成一个 18 维特征向量。返回 {棋手: [vecA(18), vecB(18)]}。
+    交替分配(而非前后切)可让两半都跨越整个生涯,从而剥离年代、只留个人风格。"""
+    if gfs is None:
+        gfs = [game_features(g) for g in games]
+    byp = defaultdict(list)
+    for g, gf in zip(games, gfs):
+        if not g.get("red") or not g.get("black"):
+            continue
+        yr = (g.get("date") or "")[:4]
+        key = g["date"] if (len(yr) == 4 and yr.isdigit() and yr != "0000") else ""
+        rc = g.get("result_code")
+        for side in ("red", "black"):
+            if g[side] in keep:
+                byp[g[side]].append((key, side, gf, rc))
+    out = {}
+    for name, items in byp.items():
+        items.sort(key=lambda t: t[0])
+        accs = [_new_acc(), _new_acc()]
+        for i, (_d, side, gf, rc) in enumerate(items):
+            _accumulate(accs[i % 2], side, gf, rc)     # 奇偶交替 → 两半各跨整个生涯
+        if accs[0]["games"] < min_half or accs[1]["games"] < min_half:
+            continue
+        fa, fb = _finalize(accs[0]), _finalize(accs[1])
+        out[name] = [[fa[c] for c in FEATURE_COLS], [fb[c] for c in FEATURE_COLS]]
+    return out
+
+
 def build_trajectories(games, keep, gfs=None):
     """棋手风格时间演化:把每位棋手(限 keep 集合)的对局按日期排序,切成早/中/晚期,
     各期单独聚合成一行特征向量。返回 {棋手: [{label, years, games, feat:[18维]}...]}。

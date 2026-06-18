@@ -25,7 +25,8 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 
 from iccs import parse_dir
-from features import build_profiles, build_trajectories, game_features, FEATURE_COLS
+from features import (build_profiles, build_trajectories, build_halves,
+                      game_features, FEATURE_COLS)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -193,6 +194,29 @@ def main():
                         "x": round(float(pxy[0]), 4), "y": round(float(pxy[1]), 4)})
         trajectories[nm] = seq
     print(f"      生成 {len(trajectories)} 位棋手的时间演化轨迹")
+
+    # 风格一致性验证(re-identification):用一位棋手一半对局的画像,在全体中找回其另一半
+    validation = None
+    halves = build_halves(games, set(df.index), gfs=gfs)
+    hnames = list(halves)
+    if len(hnames) >= 3:
+        A = scaler.transform(np.array([halves[n][0] for n in hnames], dtype=float))
+        B = scaler.transform(np.array([halves[n][1] for n in hnames], dtype=float))
+
+        def reid_acc(query, gallery, k=1):
+            hit = 0
+            for i in range(len(hnames)):
+                d = np.linalg.norm(gallery - query[i], axis=1)
+                if i in np.argsort(d)[:k]:
+                    hit += 1
+            return hit / len(hnames)
+
+        n = len(hnames)
+        acc1 = (reid_acc(A, B, 1) + reid_acc(B, A, 1)) / 2     # Rank-1,双向平均
+        acc3 = (reid_acc(A, B, 3) + reid_acc(B, A, 3)) / 2     # Rank-3(Top-3命中)
+        validation = {"accuracy": round(float(acc1), 3), "top3": round(float(acc3), 3),
+                      "n": n, "baseline": round(1.0 / n, 3), "baseline3": round(3.0 / n, 3)}
+        print(f"      风格指纹识别 Rank-1 {acc1:.0%} / Rank-3 {acc3:.0%} (基线 {1/n:.0%}/{3/n:.0%})")
     explained = [round(float(v), 4) for v in pca.explained_variance_ratio_]
     loadings = {f: [round(float(pca.components_[0][i]), 4),
                     round(float(pca.components_[1][i]), 4)]
@@ -278,6 +302,7 @@ def main():
             "min_games": min_games,
             "findings": findings,
             "sil_curve": sil_curve,
+            "validation": validation,
         },
     }
 
